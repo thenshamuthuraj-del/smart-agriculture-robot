@@ -1,0 +1,167 @@
+
+#define REMOTEXY_MODE__WIFI_CLOUD
+
+#include <ESP8266WiFi.h>
+
+// RemoteXY connection settings 
+#define REMOTEXY_WIFI_SSID "*********"
+#define REMOTEXY_WIFI_PASSWORD "*********"
+#define REMOTEXY_CLOUD_SERVER "cloud.remotexy.com" 
+#define REMOTEXY_CLOUD_PORT 6376
+#define REMOTEXY_CLOUD_TOKEN "*********"
+#define REMOTEXY_ACCESS_PASSWORD "*********"
+
+
+#include <RemoteXY.h>
+
+// RemoteXY GUI configuration  
+#pragma pack(push, 1)  
+uint8_t RemoteXY_CONF[] =   // 106 bytes
+  { 255,6,0,5,0,99,0,19,0,0,0,65,103,114,111,98,111,116,0,31,
+  1,106,200,1,1,7,0,5,23,4,60,60,0,2,26,31,1,13,77,24,
+  24,0,2,31,0,67,35,179,40,10,78,2,26,2,1,72,75,24,24,0,
+  2,31,0,10,8,145,24,24,48,4,26,31,79,78,0,31,79,70,70,0,
+  10,74,146,24,24,48,4,26,31,79,78,0,31,79,70,70,0,70,46,115,
+  18,18,16,26,37,0 };
+  
+// this structure defines all the variables and events of your control interface 
+struct {
+
+    // input variables
+  int8_t joystick_01_x; // from -100 to 100
+  int8_t joystick_01_y; // from -100 to 100
+  uint8_t button_01; // =1 if button pressed, else =0
+  uint8_t button_02; // =1 if button pressed, else =0
+  uint8_t pushSwitch_01; // =1 if state is ON, else =0
+  uint8_t pushSwitch_02; // =1 if state is ON, else =0
+
+    // output variables
+  float value_01;
+  uint8_t led_01; // from 0 to 1
+
+    // other variable
+  uint8_t connect_flag;  // =1 if wire connected, else =0
+
+} RemoteXY;   
+#pragma pack(pop)
+// Pin definitions for the motor driver and servos
+#define MOTOR_IN1 D1 // Adjusted for ESP8266 GPIO pins
+#define MOTOR_IN2 D2
+#define MOTOR_IN3 D3
+#define MOTOR_IN4 D4
+#define SERVO_1_PIN D5
+#define SERVO_2_PIN D6
+
+#define soilSensorPin A0 // Analog pin for soil sensor
+#define relayPin D7
+
+#define relayPin2 D8
+
+
+#include <Servo.h>
+Servo servo1;
+Servo servo2;
+
+int soilMoistureValue ;
+int wetThreshold = 300;  // Below this, consider soil wet
+//int dryThreshold = 500; // Threshold for dry soil (adjust based on sensor readings)
+
+void setup() {
+  RemoteXY_Init();
+
+  // Initialize motor driver pins
+  pinMode(MOTOR_IN1, OUTPUT);
+  pinMode(MOTOR_IN2, OUTPUT);
+  pinMode(MOTOR_IN3, OUTPUT);
+  pinMode(MOTOR_IN4, OUTPUT);
+
+  // Initialize servo motors
+  servo1.attach(SERVO_1_PIN);
+  servo2.attach(SERVO_2_PIN);
+
+  servo1.write(0);
+  servo2.write(0);
+
+  Serial.begin(115200); // Start serial communication
+  pinMode(relayPin, OUTPUT); // Set relay pin as output
+  digitalWrite(relayPin, LOW); 
+  
+  pinMode(relayPin2, OUTPUT); // Set relay pin as output
+  digitalWrite(relayPin2, LOW);// Ensure relay is off at startup
+}
+
+void loop() {
+  RemoteXY_Handler();
+
+if (RemoteXY.joystick_01_y > 20) 
+{ // Move forward 
+digitalWrite(MOTOR_IN1, HIGH); 
+digitalWrite(MOTOR_IN2, LOW); 
+digitalWrite(MOTOR_IN3, HIGH);
+ digitalWrite(MOTOR_IN4, LOW); } 
+ else if (RemoteXY.joystick_01_y < -20) 
+ { // Move backward 
+ digitalWrite(MOTOR_IN1, LOW);
+  digitalWrite(MOTOR_IN2, HIGH);
+   digitalWrite(MOTOR_IN3, LOW); 
+   digitalWrite(MOTOR_IN4, HIGH); }
+    else if (RemoteXY.joystick_01_x > 20)
+     { // Turn right
+      digitalWrite(MOTOR_IN1, LOW);
+       digitalWrite(MOTOR_IN2, HIGH);
+        digitalWrite(MOTOR_IN3, HIGH); 
+        digitalWrite(MOTOR_IN4, LOW); }
+         else if (RemoteXY.joystick_01_x < -20) 
+         { // Turn left
+          digitalWrite(MOTOR_IN1, HIGH); 
+          digitalWrite(MOTOR_IN2, LOW); 
+          digitalWrite(MOTOR_IN3, LOW); 
+          digitalWrite(MOTOR_IN4, HIGH); } 
+          else { // Stop 
+          digitalWrite(MOTOR_IN1, LOW);
+           digitalWrite(MOTOR_IN2, LOW); 
+           digitalWrite(MOTOR_IN3, LOW);
+            digitalWrite(MOTOR_IN4, LOW); } 
+
+
+  // Control the servos using buttons
+  if (RemoteXY.button_01) {
+    servo1.write(180); // Move to a different position when the button is pressed
+  } else {
+    servo1.write(0);  // Default position when the button is released
+  }
+
+  if (RemoteXY.button_02) {
+    servo2.write(180); // Move to a different position when the button is pressed
+  } else {
+    servo2.write(0);  // Default position when the button is released
+  }
+
+  if (RemoteXY.pushSwitch_01 == 1 ) { // Switch ON or soil dry
+    digitalWrite(relayPin2, HIGH); // Turn on the relay
+  } else {
+    digitalWrite(relayPin2, LOW); // Turn off the relay
+  }
+  
+  
+  if (RemoteXY.pushSwitch_02 == 1 ) { // Switch ON or soil dry
+    digitalWrite(relayPin, HIGH); // Turn on the relay
+  } else {
+    digitalWrite(relayPin, LOW); // Turn off the relay
+  }
+
+    soilMoistureValue = analogRead(soilSensorPin);
+  Serial.print("Soil Moisture Value: ");
+  Serial.println(soilMoistureValue);
+
+  RemoteXY.value_01 = soilMoistureValue;
+
+  if (soilMoistureValue <= wetThreshold) {
+    RemoteXY.led_01 = 1; // Turn LED ON when soil is wet
+  } else {
+    RemoteXY.led_01 = 0; // Turn LED OFF when soil is dry
+  }
+
+}
+
+ 
